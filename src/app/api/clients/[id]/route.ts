@@ -2,26 +2,20 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { clients } from "@/db/schema";
 import { eq } from "drizzle-orm";
-import { requireAuth } from "@/lib/auth";
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await requireAuth();
     const { id } = await params;
     const [client] = await db.select().from(clients).where(eq(clients.id, parseInt(id))).limit(1);
     if (!client) return NextResponse.json({ error: "Cliente não encontrado." }, { status: 404 });
     return NextResponse.json(client);
-  } catch (err) {
-    if (err instanceof Error && err.message === "Unauthorized") {
-      return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
-    }
+  } catch {
     return NextResponse.json({ error: "Erro interno." }, { status: 500 });
   }
 }
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await requireAuth();
     const { id } = await params;
     const body = await req.json();
 
@@ -48,24 +42,17 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
     if (!updated) return NextResponse.json({ error: "Cliente não encontrado." }, { status: 404 });
     return NextResponse.json(updated);
-  } catch (err) {
-    if (err instanceof Error && err.message === "Unauthorized") {
-      return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
-    }
+  } catch {
     return NextResponse.json({ error: "Erro interno." }, { status: 500 });
   }
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await requireAuth();
     const { id } = await params;
     await db.update(clients).set({ active: false, updatedAt: new Date() }).where(eq(clients.id, parseInt(id)));
     return NextResponse.json({ ok: true });
-  } catch (err) {
-    if (err instanceof Error && err.message === "Unauthorized") {
-      return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
-    }
+  } catch {
     return NextResponse.json({ error: "Erro interno." }, { status: 500 });
   }
 }

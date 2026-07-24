@@ -1,54 +1,52 @@
 import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
 import { db } from "@/db";
 import { users } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { verifyPassword, createSession } from "@/lib/auth";
 
-const LoginSchema = z.object({
-  email: z.string().email("Email inválido"),
-  password: z.string().min(1, "Senha é obrigatória"),
-});
-
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const parsed = LoginSchema.safeParse(body);
 
-    if (!parsed.success) {
+    if (!body.email || !body.password) {
       return NextResponse.json({ error: "Email e senha são obrigatórios." }, { status: 400 });
     }
 
-    const { email, password } = parsed.data;
+    const email = body.email.toLowerCase().trim();
+    const password = body.password;
 
-    const [user] = await db
-      .select()
-      .from(users)
-      .where(eq(users.email, email.toLowerCase().trim()))
-      .limit(1);
+    const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
 
-    if (!user || !user.active) {
+    if (!user) {
       return NextResponse.json({ error: "Credenciais inválidas." }, { status: 401 });
     }
 
-    const valid = await verifyPassword(password, user.passwordHash);
-    if (!valid) {
+    if (!user.active) {
+      return NextResponse.json({ error: "Usuário inativo." }, { status: 403 });
+    }
+
+    const isValid = await verifyPassword(password, user.passwordHash);
+
+    if (!isValid) {
       return NextResponse.json({ error: "Credenciais inválidas." }, { status: 401 });
     }
 
+    // Criar a sessão (isso também já define o cookie)
     await createSession(user.id);
 
     return NextResponse.json({
+      success: true,
       user: {
-        id: user.id,
+        userId: user.id,
         name: user.name,
         email: user.email,
         role: user.role,
         avatarInitials: user.avatarInitials,
       },
-    });
+    }, { status: 200 });
+
   } catch (err) {
-    console.error("[POST /api/auth/login] Error:", err);
-    return NextResponse.json({ error: "Erro interno no servidor." }, { status: 500 });
+    console.error("Login erro:", err);
+    return NextResponse.json({ error: "Erro interno do servidor." }, { status: 500 });
   }
 }

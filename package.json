@@ -11,18 +11,26 @@
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",
     "@types/bcryptjs": "^2.4.6",
+    "@types/uuid": "^10.0.0",
     "bcryptjs": "^3.0.3",
     "clsx": "^2.1.1",
     "date-fns": "^4.4.0",
+    "docxtemplater": "^3.69.0",
     "dotenv": "17.3.1",
     "drizzle-orm": "0.45.2",
     "jose": "^6.2.3",
     "lucide-react": "^1.21.0",
     "next": "16.2.6",
     "pg": "8.20.0",
+    "pizzip": "^3.2.0",
     "react": "19.2.6",
     "react-dom": "19.2.6",
+    "recharts": "^3.9.2",
+    "ssh2": "^1.17.0",
     "tailwind-merge": "^3.6.0",
+    "tar": "^7.5.21",
+    "uuid": "^14.0.1",
+    "xlsx": "^0.18.5",
     "zod": "^4.4.3"
   },
   "devDependencies": {
@@ -37,5 +45,19 @@
     "postcss": "8.5.8",
     "tailwindcss": "4.1.17",
     "typescript": "5.9.3"
-  }
+  },
+  "version": "1.0.0",
+  "description": "��#\u0000 \u0000p\u0000r\u0000i\u0000n\u0000t\u0000-\u0000s\u0000h\u0000o\u0000p\u0000-\u0000b\u0000u\u0000d\u0000g\u0000e\u0000t\u0000-\u0000s\u0000y\u0000s\u0000t\u0000e\u0000m\u0000\r\u0000 \u0000#\u0000 \u0000p\u0000r\u0000i\u0000n\u0000t\u0000-\u0000s\u0000h\u0000o\u0000p\u0000-\u0000b\u0000u\u0000d\u0000g\u0000e\u0000t\u0000-\u0000s\u0000y\u0000s\u0000t\u0000e\u0000m\u0000\r\u0000 \u0000#\u0000 \u0000p\u0000r\u0000i\u0000n\u0000t\u0000-\u0000s\u0000h\u0000o\u0000p\u0000-\u0000b\u0000u\u0000d\u0000g\u0000e\u0000t\u0000-\u0000s\u0000y\u0000s\u0000t\u0000e\u0000m\u0000\r\u0000 \u0000",
+  "main": "test_docx.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/raimma37/print-shop-budget-system.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/raimma37/print-shop-budget-system/issues"
+  },
+  "homepage": "https://github.com/raimma37/print-shop-budget-system#readme"
 }

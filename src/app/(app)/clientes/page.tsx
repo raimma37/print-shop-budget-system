@@ -49,7 +49,7 @@ export default function ClientesPage() {
   const [formError, setFormError] = useState("");
 
   useEffect(() => {
-    if (!loading && !user) router.replace("/login");
+    if (!loading && !user) router.replace("/dashboard");
   }, [user, loading, router]);
 
   const fetchData = useCallback(async () => {

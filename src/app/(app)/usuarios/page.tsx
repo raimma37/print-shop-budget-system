@@ -41,7 +41,7 @@ export default function UsuariosPage() {
   const [formError, setFormError] = useState("");
 
   useEffect(() => {
-    if (!loading && !user) router.replace("/login");
+    if (!loading && !user) router.replace("/dashboard");
     if (!loading && user && user.role !== "admin") router.replace("/dashboard");
   }, [user, loading, router]);
 

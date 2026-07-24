@@ -27,7 +27,6 @@ interface LineItem {
   quantity: string;
   unit: string;
   unitPrice: string;
-  discount: string;
   sortOrder: number;
 }
 
@@ -46,32 +45,39 @@ interface OrcamentoFormProps {
       quantity: string;
       unit: string;
       unitPrice: string;
-      discount: string;
       sortOrder: number;
     }>;
   };
   mode: "create" | "edit";
 }
 
-function calcItemTotal(qty: string, price: string, disc: string): number {
+function calcItemTotal(qty: string, price: string): number {
   const q = parseFloat(qty) || 0;
   const p = parseFloat(price) || 0;
-  const d = parseFloat(disc) || 0;
-  return q * p * (1 - d / 100);
+  return q * p;
 }
 
 export function OrcamentoForm({ initialData, mode }: OrcamentoFormProps) {
   const router = useRouter();
   const [clients, setClients] = useState<Client[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
-  const [productSearch, setProductSearch] = useState("");
-  const [showProductSearch, setShowProductSearch] = useState<number | null>(null);
+  
+  const [newItem, setNewItem] = useState<LineItem>({
+    productId: null,
+    description: "",
+    quantity: "1",
+    unit: "un",
+    unitPrice: "0",
+    sortOrder: 0,
+  });
+  const [showNewItemSearch, setShowNewItemSearch] = useState(false);
 
   const [clientId, setClientId] = useState<string>(String(initialData?.clientId ?? ""));
   const [status, setStatus] = useState(initialData?.status ?? "rascunho");
   const [validUntil, setValidUntil] = useState(
     initialData?.validUntil ? new Date(initialData.validUntil).toISOString().slice(0, 10) : ""
   );
+  const [discountType, setDiscountType] = useState<"R$" | "%">("R$");
   const [discount, setDiscount] = useState(initialData?.discount ?? "0");
   const [notes, setNotes] = useState(initialData?.notes ?? "");
   const [internalNotes, setInternalNotes] = useState(initialData?.internalNotes ?? "");
@@ -83,52 +89,73 @@ export function OrcamentoForm({ initialData, mode }: OrcamentoFormProps) {
           quantity: it.quantity,
           unit: it.unit,
           unitPrice: it.unitPrice,
-          discount: it.discount,
           sortOrder: it.sortOrder,
         }))
-      : [
-          { productId: null, description: "", quantity: "1", unit: "un", unitPrice: "0", discount: "0", sortOrder: 0 },
-        ]
+      : []
   );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    fetch("/api/clients").then((r) => r.json()).then(setClients);
-    fetch("/api/products").then((r) => r.json()).then(setProducts);
+    fetch("/api/clients")
+      .then((r) => r.json())
+      .then((data) => {
+        if (Array.isArray(data)) setClients(data);
+        else console.error("Falha ao carregar clientes", data);
+      })
+      .catch((err) => console.error(err));
+
+    fetch("/api/products")
+      .then((r) => r.json())
+      .then((data) => {
+        if (Array.isArray(data)) setProducts(data);
+        else console.error("Falha ao carregar produtos", data);
+      })
+      .catch((err) => console.error(err));
   }, []);
 
+  const activeSearch = showNewItemSearch ? newItem.description : "";
   const filteredProducts = products.filter(
     (p) =>
-      !productSearch ||
-      p.name.toLowerCase().includes(productSearch.toLowerCase()) ||
-      (p.category ?? "").toLowerCase().includes(productSearch.toLowerCase())
+      !activeSearch ||
+      p.name.toLowerCase().includes(activeSearch.toLowerCase()) ||
+      (p.category ?? "").toLowerCase().includes(activeSearch.toLowerCase())
   );
 
   const subtotal = items.reduce(
-    (sum, item) => sum + calcItemTotal(item.quantity, item.unitPrice, item.discount),
+    (sum, item) => sum + calcItemTotal(item.quantity, item.unitPrice),
     0
   );
-  const discountAmt = parseFloat(discount) || 0;
+  const discountVal = parseFloat(discount) || 0;
+  const discountAmt = discountType === "%" ? subtotal * (discountVal / 100) : discountVal;
   const total = subtotal - discountAmt;
 
-  const addItem = () => {
-    setItems((prev) => [
-      ...prev,
-      {
-        productId: null,
-        description: "",
-        quantity: "1",
-        unit: "un",
-        unitPrice: "0",
-        discount: "0",
-        sortOrder: prev.length,
-      },
-    ]);
+  const addNewItemToBudget = () => {
+    if (!newItem.description.trim()) return;
+    setItems((prev) => [...prev, { ...newItem, sortOrder: prev.length }]);
+    setNewItem({
+      productId: null,
+      description: "",
+      quantity: "1",
+      unit: "un",
+      unitPrice: "0",
+      sortOrder: 0,
+    });
+    setShowNewItemSearch(false);
+    setTimeout(() => {
+      document.getElementById("new-item-desc")?.focus();
+    }, 10);
   };
 
   const removeItem = (idx: number) => {
     setItems((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  const handleNewItemKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      addNewItemToBudget();
+    }
   };
 
   const updateItem = (idx: number, field: keyof LineItem, value: string | number | null) => {
@@ -139,22 +166,18 @@ export function OrcamentoForm({ initialData, mode }: OrcamentoFormProps) {
     );
   };
 
-  const selectProduct = (idx: number, product: Product) => {
-    setItems((prev) =>
-      prev.map((item, i) =>
-        i === idx
-          ? {
-              ...item,
-              productId: product.id,
-              description: product.name,
-              unit: product.unit,
-              unitPrice: product.basePrice,
-            }
-          : item
-      )
-    );
-    setShowProductSearch(null);
-    setProductSearch("");
+  const selectNewProduct = (product: Product) => {
+    setNewItem({
+      ...newItem,
+      productId: product.id,
+      description: product.name,
+      unit: product.unit,
+      unitPrice: product.basePrice,
+    });
+    setShowNewItemSearch(false);
+    setTimeout(() => {
+      document.getElementById("new-item-qty")?.focus();
+    }, 10);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -177,7 +200,7 @@ export function OrcamentoForm({ initialData, mode }: OrcamentoFormProps) {
       clientId: parseInt(clientId),
       status,
       validUntil: validUntil || null,
-      discount,
+      discount: discountAmt, // Sempre envia o valor em R$ para o backend
       notes,
       internalNotes,
       items: items.map((it, idx) => ({
@@ -186,7 +209,6 @@ export function OrcamentoForm({ initialData, mode }: OrcamentoFormProps) {
         quantity: parseFloat(it.quantity) || 0,
         unit: it.unit,
         unitPrice: parseFloat(it.unitPrice) || 0,
-        discount: parseFloat(it.discount) || 0,
         sortOrder: idx,
       })),
     };
@@ -257,16 +279,104 @@ export function OrcamentoForm({ initialData, mode }: OrcamentoFormProps) {
         </div>
       </div>
 
-      {/* Line Items */}
-      <div className="rounded-2xl border border-slate-100 bg-white shadow-sm overflow-hidden">
-        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-          <h2 className="font-semibold text-slate-900">Itens do Orçamento</h2>
-          <Button type="button" variant="secondary" size="sm" onClick={addItem}>
-            <Plus className="h-4 w-4" /> Adicionar Item
+      {/* Add New Item */}
+      <div className="rounded-2xl border border-slate-100 bg-white shadow-sm p-6 overflow-visible">
+        <h2 className="font-semibold text-slate-900 mb-4">Adicionar Item</h2>
+        <div className="flex flex-col md:flex-row gap-3 items-end">
+          <div className="flex-1 relative w-full">
+            <label className="block text-xs font-medium text-slate-700 mb-1">Descrição / Produto</label>
+            <input
+              id="new-item-desc"
+              type="text"
+              value={newItem.description}
+              onFocus={() => setShowNewItemSearch(true)}
+              onBlur={() => setTimeout(() => setShowNewItemSearch(false), 200)}
+              onChange={(e) => {
+                setNewItem({ ...newItem, description: e.target.value });
+                setShowNewItemSearch(true);
+              }}
+              onKeyDown={handleNewItemKeyDown}
+              placeholder="Buscar produto ou digitar..."
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+            {showNewItemSearch && (
+              <div className="absolute top-full left-0 z-50 mt-1 w-full min-w-72 rounded-xl border border-slate-200 bg-white shadow-xl">
+                <div className="max-h-[300px] overflow-y-auto scrollbar-thin py-1">
+                  {filteredProducts.length === 0 ? (
+                    <p className="px-4 py-3 text-sm text-slate-500">Nenhum produto encontrado.</p>
+                  ) : (
+                    filteredProducts.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => selectNewProduct(p)}
+                        className="w-full text-left px-4 py-2.5 hover:bg-indigo-50 transition-colors"
+                      >
+                        <p className="text-sm font-medium text-slate-900">{p.name}</p>
+                        <p className="text-xs text-slate-500">
+                          {p.category && `${p.category} · `}
+                          {formatCurrency(parseFloat(p.basePrice))} / {p.unit}
+                        </p>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+          
+          <div className="w-full md:w-24">
+            <label className="block text-xs font-medium text-slate-700 mb-1">Qtd</label>
+            <input
+              id="new-item-qty"
+              type="number"
+              value={newItem.quantity}
+              onChange={(e) => setNewItem({ ...newItem, quantity: e.target.value })}
+              onKeyDown={handleNewItemKeyDown}
+              min="0"
+              step="0.001"
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 text-right"
+            />
+          </div>
+          
+          <div className="w-full md:w-20">
+            <label className="block text-xs font-medium text-slate-700 mb-1">Un</label>
+            <input
+              type="text"
+              value={newItem.unit}
+              onChange={(e) => setNewItem({ ...newItem, unit: e.target.value })}
+              onKeyDown={handleNewItemKeyDown}
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+          
+          <div className="w-full md:w-32 relative">
+            <label className="block text-xs font-medium text-slate-700 mb-1">Preço Unit.</label>
+            <span className="absolute left-2.5 top-[28px] text-slate-400 text-xs">R$</span>
+            <input
+              type="number"
+              value={newItem.unitPrice}
+              onChange={(e) => setNewItem({ ...newItem, unitPrice: e.target.value })}
+              onKeyDown={handleNewItemKeyDown}
+              min="0"
+              step="0.01"
+              className="w-full rounded-lg border border-slate-200 pl-7 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 text-right"
+            />
+          </div>
+          
+          <Button type="button" onClick={addNewItemToBudget} className="w-full md:w-auto mt-4 md:mt-0 gap-2">
+            <Plus className="h-4 w-4" />
+            <span className="hidden md:inline">Adicionar</span>
           </Button>
         </div>
+      </div>
 
-        {/* Desktop table */}
+      {/* Registered Items */}
+      <div className="rounded-2xl border border-slate-100 bg-white shadow-sm mt-6">
+        <div className="px-6 py-4 border-b border-slate-100">
+          <h2 className="font-semibold text-slate-900">Itens Registrados</h2>
+        </div>
+
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -276,79 +386,24 @@ export function OrcamentoForm({ initialData, mode }: OrcamentoFormProps) {
                 <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 uppercase w-24">Qtd</th>
                 <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 uppercase w-20">Un</th>
                 <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 uppercase w-32">Preço Unit.</th>
-                <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 uppercase w-24">Desc. %</th>
                 <th className="px-3 py-3 text-right text-xs font-semibold text-slate-500 uppercase w-32">Total</th>
                 <th className="w-12 px-3 py-3" />
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
               {items.map((item, idx) => (
-                <tr key={idx} className="group">
+                <tr key={idx} className="group hover:bg-slate-50/50 transition-colors">
                   <td className="px-3 py-3 text-slate-300 cursor-grab">
                     <GripVertical className="h-4 w-4" />
                   </td>
                   <td className="px-3 py-2">
-                    <div className="relative">
-                      <div className="flex gap-2">
-                        <input
-                          type="text"
-                          value={item.description}
-                          onChange={(e) => updateItem(idx, "description", e.target.value)}
-                          placeholder="Descrição do item..."
-                          className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                          required
-                        />
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setShowProductSearch(showProductSearch === idx ? null : idx);
-                            setProductSearch("");
-                          }}
-                          className="flex-shrink-0 rounded-lg border border-slate-200 p-2 text-slate-400 hover:text-indigo-600 hover:border-indigo-300 hover:bg-indigo-50 transition-colors"
-                          title="Buscar produto"
-                        >
-                          <Package className="h-4 w-4" />
-                        </button>
-                      </div>
-
-                      {showProductSearch === idx && (
-                        <div className="absolute top-full left-0 z-50 mt-1 w-full min-w-72 rounded-xl border border-slate-200 bg-white shadow-xl">
-                          <div className="p-2 border-b border-slate-100">
-                            <div className="relative">
-                              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                              <input
-                                autoFocus
-                                type="text"
-                                placeholder="Buscar produto..."
-                                value={productSearch}
-                                onChange={(e) => setProductSearch(e.target.value)}
-                                className="w-full pl-8 pr-3 py-1.5 text-sm rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                              />
-                            </div>
-                          </div>
-                          <div className="max-h-48 overflow-y-auto scrollbar-thin">
-                            {filteredProducts.length === 0 ? (
-                              <p className="px-4 py-3 text-sm text-slate-500">Nenhum produto encontrado.</p>
-                            ) : (
-                              filteredProducts.map((p) => (
-                                <button
-                                  key={p.id}
-                                  type="button"
-                                  onClick={() => selectProduct(idx, p)}
-                                  className="w-full text-left px-4 py-2.5 hover:bg-indigo-50 transition-colors"
-                                >
-                                  <p className="text-sm font-medium text-slate-900">{p.name}</p>
-                                  <p className="text-xs text-slate-500">
-                                    {p.category && `${p.category} · `}
-                                    {formatCurrency(parseFloat(p.basePrice))} / {p.unit}
-                                  </p>
-                                </button>
-                              ))
-                            )}
-                          </div>
-                        </div>
-                      )}
-                    </div>
+                    <input
+                      type="text"
+                      value={item.description}
+                      onChange={(e) => updateItem(idx, "description", e.target.value)}
+                      className="w-full rounded-lg border-transparent bg-transparent px-3 py-2 text-sm focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-500 hover:border-slate-200 transition-colors"
+                      required
+                    />
                   </td>
                   <td className="px-3 py-2">
                     <input
@@ -357,7 +412,7 @@ export function OrcamentoForm({ initialData, mode }: OrcamentoFormProps) {
                       onChange={(e) => updateItem(idx, "quantity", e.target.value)}
                       min="0"
                       step="0.001"
-                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 text-right"
+                      className="w-full rounded-lg border-transparent bg-transparent px-3 py-2 text-sm text-right focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-500 hover:border-slate-200 transition-colors"
                     />
                   </td>
                   <td className="px-3 py-2">
@@ -365,7 +420,7 @@ export function OrcamentoForm({ initialData, mode }: OrcamentoFormProps) {
                       type="text"
                       value={item.unit}
                       onChange={(e) => updateItem(idx, "unit", e.target.value)}
-                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      className="w-full rounded-lg border-transparent bg-transparent px-3 py-2 text-sm focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-500 hover:border-slate-200 transition-colors"
                     />
                   </td>
                   <td className="px-3 py-2">
@@ -377,26 +432,12 @@ export function OrcamentoForm({ initialData, mode }: OrcamentoFormProps) {
                         onChange={(e) => updateItem(idx, "unitPrice", e.target.value)}
                         min="0"
                         step="0.01"
-                        className="w-full rounded-lg border border-slate-200 pl-7 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 text-right"
+                        className="w-full rounded-lg border-transparent bg-transparent pl-7 pr-3 py-2 text-sm text-right focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-500 hover:border-slate-200 transition-colors"
                       />
                     </div>
                   </td>
-                  <td className="px-3 py-2">
-                    <div className="relative">
-                      <input
-                        type="number"
-                        value={item.discount}
-                        onChange={(e) => updateItem(idx, "discount", e.target.value)}
-                        min="0"
-                        max="100"
-                        step="0.01"
-                        className="w-full rounded-lg border border-slate-200 px-3 pr-6 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 text-right"
-                      />
-                      <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs">%</span>
-                    </div>
-                  </td>
-                  <td className="px-3 py-2 text-right font-semibold text-slate-900">
-                    {formatCurrency(calcItemTotal(item.quantity, item.unitPrice, item.discount))}
+                  <td className="px-3 py-2 text-right font-medium text-slate-900">
+                    {formatCurrency(calcItemTotal(item.quantity, item.unitPrice))}
                   </td>
                   <td className="px-3 py-2">
                     <button
@@ -413,40 +454,58 @@ export function OrcamentoForm({ initialData, mode }: OrcamentoFormProps) {
           </table>
 
           {items.length === 0 && (
-            <div className="py-8 text-center">
-              <p className="text-sm text-slate-500">Nenhum item adicionado.</p>
-              <button
-                type="button"
-                onClick={addItem}
-                className="mt-2 text-sm text-indigo-600 hover:underline"
-              >
-                + Adicionar item
-              </button>
+            <div className="py-12 text-center flex flex-col items-center justify-center">
+              <Package className="h-10 w-10 text-slate-200 mb-3" />
+              <p className="text-sm text-slate-500">Nenhum item registrado no orçamento.</p>
+              <p className="text-xs text-slate-400 mt-1">Use a área acima para adicionar produtos.</p>
             </div>
           )}
         </div>
 
         {/* Totals */}
         <div className="border-t border-slate-100 bg-slate-50 px-6 py-4">
-          <div className="flex flex-col items-end gap-2 max-w-xs ml-auto">
+          <div className="flex flex-col items-end gap-2 max-w-sm ml-auto">
             <div className="flex w-full justify-between text-sm text-slate-600">
               <span>Subtotal:</span>
               <span className="font-medium">{formatCurrency(subtotal)}</span>
             </div>
             <div className="flex w-full items-center gap-3 text-sm text-slate-600">
-              <span className="flex-1">Desconto global (R$):</span>
-              <div className="relative w-32">
-                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs">R$</span>
-                <input
-                  type="number"
-                  value={discount}
-                  onChange={(e) => setDiscount(e.target.value)}
-                  min="0"
-                  step="0.01"
-                  className="w-full rounded-lg border border-slate-200 bg-white pl-7 pr-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 text-right"
-                />
+              <span className="flex-1 text-right">Desconto global:</span>
+              <div className="flex items-center gap-1">
+                <select
+                  value={discountType}
+                  onChange={(e) => setDiscountType(e.target.value as "R$" | "%")}
+                  className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="R$">R$</option>
+                  <option value="%">%</option>
+                </select>
+                <div className="relative w-28">
+                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs">
+                    {discountType === "R$" ? "R$" : ""}
+                  </span>
+                  <input
+                    type="number"
+                    value={discount}
+                    onChange={(e) => setDiscount(e.target.value)}
+                    min="0"
+                    step="0.01"
+                    className={`w-full rounded-lg border border-slate-200 bg-white py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 text-right ${
+                      discountType === "R$" ? "pl-7 pr-3" : "px-3"
+                    }`}
+                  />
+                  {discountType === "%" && (
+                    <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs">%</span>
+                  )}
+                </div>
               </div>
             </div>
+            {discountType === "%" && discountVal > 0 && (
+              <div className="flex w-full justify-between text-xs text-slate-500">
+                <span>Valor do desconto:</span>
+                <span>-{formatCurrency(discountAmt)}</span>
+              </div>
+            )}
             <div className="flex w-full justify-between border-t border-slate-200 pt-2 text-base font-bold text-slate-900">
               <span>Total:</span>
               <span className="text-indigo-700">{formatCurrency(total)}</span>

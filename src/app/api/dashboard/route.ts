@@ -1,13 +1,10 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
-import { orcamentos, clients } from "@/db/schema";
+import { orcamentos, orcamentoItems, products, clients } from "@/db/schema";
 import { eq, count, sum, desc } from "drizzle-orm";
-import { requireAuth } from "@/lib/auth";
 
 export async function GET() {
   try {
-    await requireAuth();
-
     const [totalClients] = await db.select({ count: count() }).from(clients).where(eq(clients.active, true));
 
     const statusCounts = await db
@@ -28,20 +25,7 @@ export async function GET() {
       .orderBy(desc(orcamentos.createdAt))
       .limit(5);
 
-    // Get client names for recent orcamentos
-    const clientIds = [...new Set(recentOrcamentos.map((o) => o.clientId))];
-    const clientsData = clientIds.length
-      ? await db.select({ id: clients.id, name: clients.name }).from(clients).where(
-          clientIds.length === 1
-            ? eq(clients.id, clientIds[0])
-            : eq(clients.id, clientIds[0]) // fallback, will enrich below
-        )
-      : [];
-
-    const clientMap: Record<number, string> = {};
-    for (const c of clientsData) clientMap[c.id] = c.name;
-
-    // Fetch all client names for recent orcamentos
+    // Enriquece com nomes dos clientes
     const allClientsForRecent = await db
       .select({ id: clients.id, name: clients.name })
       .from(clients);
@@ -52,6 +36,37 @@ export async function GET() {
       ...o,
       clientName: fullClientMap[o.clientId] ?? "—",
     }));
+
+    // ─── Cálculo de Lucratividade (orçamentos aprovados) ─────────────────────
+    // Busca todos os itens de orçamentos aprovados que têm produto vinculado
+    const aprovadosItems = await db
+      .select({
+        quantity: orcamentoItems.quantity,
+        unitPrice: orcamentoItems.unitPrice,
+        discount: orcamentoItems.discount,
+        total: orcamentoItems.total,
+        costPrice: products.costPrice,
+      })
+      .from(orcamentoItems)
+      .innerJoin(orcamentos, eq(orcamentoItems.orcamentoId, orcamentos.id))
+      .innerJoin(products, eq(orcamentoItems.productId, products.id))
+      .where(eq(orcamentos.status, "aprovado"));
+
+    let receitaAprovada = 0;
+    let custoEstimado = 0;
+
+    for (const item of aprovadosItems) {
+      const qty = parseFloat(item.quantity);
+      const total = parseFloat(item.total);
+      const cost = parseFloat(item.costPrice ?? "0");
+      receitaAprovada += total;
+      custoEstimado += cost * qty;
+    }
+
+    const lucroEstimado = receitaAprovada - custoEstimado;
+    const margemMedia = receitaAprovada > 0
+      ? Math.round((lucroEstimado / receitaAprovada) * 100)
+      : 0;
 
     const totalAprovado = statusCounts.find((s) => s.status === "aprovado")?.total ?? "0";
     const totalEnviado = statusCounts.find((s) => s.status === "enviado")?.total ?? "0";
@@ -70,11 +85,13 @@ export async function GET() {
       totalAll,
       statusCounts,
       recentOrcamentos: enrichedRecent,
+      // Lucratividade
+      receitaAprovada,
+      custoEstimado,
+      lucroEstimado,
+      margemMedia,
     });
   } catch (err) {
-    if (err instanceof Error && err.message === "Unauthorized") {
-      return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
-    }
     console.error(err);
     return NextResponse.json({ error: "Erro interno." }, { status: 500 });
   }

@@ -1,8 +1,6 @@
 import { db } from "@/db";
-import { orcamentos, clients, users } from "@/db/schema";
-import { eq, desc, count, sum, sql } from "drizzle-orm";
-import { getSession } from "@/lib/auth";
-import { redirect } from "next/navigation";
+import { orcamentos, orcamentoItems, products, clients, users } from "@/db/schema";
+import { eq, desc, count, sum } from "drizzle-orm";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { StatCard } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/ui/Badge";
@@ -16,6 +14,8 @@ import {
   Clock,
   Plus,
   ArrowRight,
+  DollarSign,
+  BarChart3,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -25,9 +25,8 @@ export const metadata = {
   title: "Dashboard – GráfikaORC",
 };
 
-async function getDashboardData(userId: number, role: string) {
-  // Busca estatísticas em paralelo
-  const [statusCounts, recentOrcamentos, clientCount] = await Promise.all([
+async function getDashboardData() {
+  const [statusCounts, recentOrcamentos, clientCount, aprovadosItems] = await Promise.all([
     db
       .select({
         status: orcamentos.status,
@@ -52,28 +51,54 @@ async function getDashboardData(userId: number, role: string) {
       .limit(8),
 
     db.select({ count: count(clients.id) }).from(clients).where(eq(clients.active, true)),
+
+    // Itens de orçamentos aprovados com produto vinculado (para calcular lucro)
+    db
+      .select({
+        quantity: orcamentoItems.quantity,
+        total: orcamentoItems.total,
+        costPrice: products.costPrice,
+      })
+      .from(orcamentoItems)
+      .innerJoin(orcamentos, eq(orcamentoItems.orcamentoId, orcamentos.id))
+      .innerJoin(products, eq(orcamentoItems.productId, products.id))
+      .where(eq(orcamentos.status, "aprovado")),
   ]);
 
   const statusMap = Object.fromEntries(
     statusCounts.map((s) => [s.status, { count: s.count, total: parseFloat(s.total ?? "0") }])
   );
 
+  // Cálculo de lucratividade
+  let receitaAprovada = 0;
+  let custoEstimado = 0;
+  for (const item of aprovadosItems) {
+    receitaAprovada += parseFloat(item.total);
+    custoEstimado += parseFloat(item.costPrice ?? "0") * parseFloat(item.quantity);
+  }
+  const lucroEstimado = receitaAprovada - custoEstimado;
+  const margemMedia = receitaAprovada > 0
+    ? Math.round((lucroEstimado / receitaAprovada) * 100)
+    : null;
+
   return {
     statusMap,
     recentOrcamentos,
     totalClients: clientCount[0]?.count ?? 0,
     totalAll: statusCounts.reduce((acc, s) => acc + parseFloat(s.total ?? "0"), 0),
+    receitaAprovada,
+    custoEstimado,
+    lucroEstimado,
+    margemMedia,
+    temDadosDeLucro: aprovadosItems.length > 0,
   };
 }
 
 export default async function DashboardPage() {
-  const session = await getSession();
-  if (!session) redirect("/login");
-
-  const { statusMap, recentOrcamentos, totalClients, totalAll } = await getDashboardData(
-    session.userId,
-    session.role
-  );
+  const {
+    statusMap, recentOrcamentos, totalClients, totalAll,
+    receitaAprovada, custoEstimado, lucroEstimado, margemMedia, temDadosDeLucro,
+  } = await getDashboardData();
 
   const cards = [
     {
@@ -117,7 +142,7 @@ export default async function DashboardPage() {
 
   return (
     <AppLayout
-      title={`Olá, ${session.name.split(" ")[0]} 👋`}
+      title="Dashboard"
       subtitle="Aqui está um resumo dos seus orçamentos"
       actions={
         <Link href="/orcamentos/novo">
@@ -141,6 +166,102 @@ export default async function DashboardPage() {
           />
         ))}
       </div>
+
+      {/* ─── Painel de Lucratividade ──────────────────────────────────────────── */}
+      {temDadosDeLucro ? (
+        <div className="mb-6 rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+          <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-50">
+              <BarChart3 className="h-4 w-4 text-emerald-600" />
+            </div>
+            <div>
+              <h2 className="font-semibold text-slate-900 text-base">Lucratividade — Pedidos Aprovados</h2>
+              <p className="text-xs text-slate-500">Calculado com base nos produtos com custo cadastrado</p>
+            </div>
+            {margemMedia !== null && (
+              <div className="ml-auto flex items-center gap-2">
+                <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-bold ${
+                  margemMedia >= 40 ? "bg-emerald-100 text-emerald-700"
+                  : margemMedia >= 20 ? "bg-amber-100 text-amber-700"
+                  : "bg-red-100 text-red-700"
+                }`}>
+                  <TrendingUp className="h-3.5 w-3.5" />
+                  {margemMedia}% margem
+                </span>
+              </div>
+            )}
+          </div>
+
+          <div className="p-5">
+            {/* Cards de lucro */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
+              <div className="rounded-xl bg-slate-50 border border-slate-100 p-4">
+                <p className="text-xs text-slate-500 mb-1">Receita (aprovados)</p>
+                <p className="text-xl font-bold text-slate-900 tabular-nums">
+                  {formatCurrency(receitaAprovada)}
+                </p>
+              </div>
+              <div className="rounded-xl bg-slate-50 border border-slate-100 p-4">
+                <p className="text-xs text-slate-500 mb-1">Custo estimado</p>
+                <p className="text-xl font-bold text-red-700 tabular-nums">
+                  {formatCurrency(custoEstimado)}
+                </p>
+              </div>
+              <div className={`rounded-xl border p-4 ${
+                lucroEstimado >= 0
+                  ? "bg-emerald-50 border-emerald-200"
+                  : "bg-red-50 border-red-200"
+              }`}>
+                <p className="text-xs text-slate-500 mb-1 flex items-center gap-1">
+                  <DollarSign className="h-3 w-3" /> Lucro bruto estimado
+                </p>
+                <p className={`text-xl font-bold tabular-nums ${
+                  lucroEstimado >= 0 ? "text-emerald-700" : "text-red-700"
+                }`}>
+                  {formatCurrency(lucroEstimado)}
+                </p>
+              </div>
+            </div>
+
+            {/* Barra Receita vs Custo */}
+            {receitaAprovada > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs text-slate-500">
+                  <span className="flex items-center gap-1.5">
+                    <span className="inline-block h-2.5 w-2.5 rounded-full bg-emerald-500"></span>
+                    Lucro ({margemMedia ?? 0}%)
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    Custo ({100 - (margemMedia ?? 0)}%)
+                    <span className="inline-block h-2.5 w-2.5 rounded-full bg-red-400"></span>
+                  </span>
+                </div>
+                <div className="h-3 rounded-full bg-red-200 overflow-hidden">
+                  <div
+                    className="h-3 rounded-full bg-emerald-500 transition-all duration-700"
+                    style={{ width: `${Math.max(0, Math.min(100, margemMedia ?? 0))}%` }}
+                  />
+                </div>
+                <p className="text-xs text-slate-400 text-center">
+                  Para cada R$ 1,00 vendido, {formatCurrency(lucroEstimado / (receitaAprovada || 1))} é lucro
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="mb-6 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-6 py-5 flex items-center gap-4">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 flex-shrink-0">
+            <BarChart3 className="h-5 w-5 text-slate-400" />
+          </div>
+          <div>
+            <p className="text-sm font-medium text-slate-700">Dados de lucratividade indisponíveis</p>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Cadastre o <strong>valor de custo</strong> nos produtos e vincule-os aos itens dos orçamentos para ver o lucro estimado aqui.
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
         {/* Orçamentos recentes */}
@@ -203,7 +324,7 @@ export default async function DashboardPage() {
           )}
         </div>
 
-        {/* Status summary */}
+        {/* Status + Volume */}
         <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
           <div className="px-5 py-4 border-b border-slate-100">
             <h2 className="font-semibold text-slate-900 text-base">Por Status</h2>

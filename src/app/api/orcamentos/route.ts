@@ -3,25 +3,37 @@ import { z } from "zod";
 import { db } from "@/db";
 import { orcamentos, orcamentoItems, clients, users } from "@/db/schema";
 import { eq, ilike, or, desc, and } from "drizzle-orm";
-import { requireAuth } from "@/lib/auth";
 import { generateOrcamentoNumber } from "@/lib/utils";
+
+// ID do usuário padrão (sem autenticação própria — módulo integrado)
+const DEFAULT_USER_ID = 1;
 
 // ─── Schemas de validação ─────────────────────────────────────────────────────
 const OrcamentoItemSchema = z.object({
   productId: z.number().int().positive().optional().nullable(),
   description: z.string().min(1, "Descrição é obrigatória").max(500),
-  quantity: z.number().positive("Quantidade deve ser positiva"),
+  quantity: z.coerce.number().positive("Quantidade deve ser positiva"),
   unit: z.string().default("un"),
-  unitPrice: z.number().min(0, "Preço não pode ser negativo"),
-  discount: z.number().min(0).max(100).default(0),
+  unitPrice: z.coerce.number().min(0, "Preço não pode ser negativo"),
+  discount: z.coerce.number().min(0).max(100).default(0),
   sortOrder: z.number().int().default(0),
 });
 
 const CreateOrcamentoSchema = z.object({
-  clientId: z.number().int().positive("Cliente é obrigatório"),
+  clientId: z.coerce.number().int().positive("Cliente é obrigatório"),
   status: z.enum(["rascunho", "enviado", "aprovado", "reprovado", "cancelado"]).default("rascunho"),
-  validUntil: z.string().datetime().optional().nullable(),
-  discount: z.number().min(0).default(0),
+  // Aceita: null, string vazia, ISO date (yyyy-MM-dd) ou ISO datetime completo
+  validUntil: z
+    .string()
+    .optional()
+    .nullable()
+    .transform((val) => {
+      if (!val || val.trim() === "") return null;
+      // Se vier apenas a data (yyyy-MM-dd), converte para ISO datetime
+      if (/^\d{4}-\d{2}-\d{2}$/.test(val)) return new Date(val + "T12:00:00.000Z").toISOString();
+      return val;
+    }),
+  discount: z.coerce.number().min(0).default(0),
   notes: z.string().max(2000).optional().nullable(),
   internalNotes: z.string().max(2000).optional().nullable(),
   items: z.array(OrcamentoItemSchema).default([]),
@@ -30,8 +42,6 @@ const CreateOrcamentoSchema = z.object({
 // ─── GET /api/orcamentos ──────────────────────────────────────────────────────
 export async function GET(req: NextRequest) {
   try {
-    await requireAuth();
-
     const status = req.nextUrl.searchParams.get("status") ?? "";
     const search = req.nextUrl.searchParams.get("search") ?? "";
     const page = Math.max(1, parseInt(req.nextUrl.searchParams.get("page") ?? "1"));
@@ -71,9 +81,6 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json(rows);
   } catch (err) {
-    if (err instanceof Error && err.message === "Unauthorized") {
-      return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
-    }
     console.error("[GET /api/orcamentos]", err);
     return NextResponse.json({ error: "Erro interno." }, { status: 500 });
   }
@@ -82,8 +89,6 @@ export async function GET(req: NextRequest) {
 // ─── POST /api/orcamentos ─────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
   try {
-    const session = await requireAuth();
-
     // Valida corpo da requisição
     const body = await req.json();
     const parsed = CreateOrcamentoSchema.safeParse(body);
@@ -123,7 +128,7 @@ export async function POST(req: NextRequest) {
         .values({
           numero,
           clientId: data.clientId,
-          userId: session.userId,
+          userId: DEFAULT_USER_ID,
           status: data.status,
           validUntil: data.validUntil ? new Date(data.validUntil) : null,
           subtotal: String(subtotal.toFixed(2)),
@@ -145,9 +150,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(orc, { status: 201 });
   } catch (err) {
-    if (err instanceof Error && err.message === "Unauthorized") {
-      return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
-    }
     console.error("[POST /api/orcamentos]", err);
     return NextResponse.json({ error: "Erro interno." }, { status: 500 });
   }

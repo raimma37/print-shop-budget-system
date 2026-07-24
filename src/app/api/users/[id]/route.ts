@@ -2,21 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { users } from "@/db/schema";
 import { eq } from "drizzle-orm";
-import { requireAuth, hashPassword } from "@/lib/auth";
+import { hashPassword } from "@/lib/auth";
 import { getInitials } from "@/lib/utils";
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const session = await requireAuth();
     const { id } = await params;
     const numId = parseInt(id);
-
-    // Users can update themselves; only admins can update others
-    if (session.role !== "admin" && session.userId !== numId) {
-      return NextResponse.json({ error: "Sem permissão." }, { status: 403 });
-    }
-
     const body = await req.json();
+
     const updateData: Record<string, unknown> = {
       name: body.name?.trim(),
       email: body.email?.toLowerCase().trim(),
@@ -51,27 +45,17 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
     if (!updated) return NextResponse.json({ error: "Usuário não encontrado." }, { status: 404 });
     return NextResponse.json(updated);
-  } catch (err) {
-    if (err instanceof Error && err.message === "Unauthorized") {
-      return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
-    }
+  } catch {
     return NextResponse.json({ error: "Erro interno." }, { status: 500 });
   }
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const session = await requireAuth();
-    if (session.role !== "admin") {
-      return NextResponse.json({ error: "Apenas admins podem remover usuários." }, { status: 403 });
-    }
     const { id } = await params;
     await db.update(users).set({ active: false, updatedAt: new Date() }).where(eq(users.id, parseInt(id)));
     return NextResponse.json({ ok: true });
-  } catch (err) {
-    if (err instanceof Error && err.message === "Unauthorized") {
-      return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
-    }
+  } catch {
     return NextResponse.json({ error: "Erro interno." }, { status: 500 });
   }
 }

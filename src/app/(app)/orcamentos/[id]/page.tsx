@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { useAuth } from "@/contexts/AuthContext";
 import { useRouter, useParams } from "next/navigation";
-import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils";
+import { formatCurrency, formatDate, formatDateTime, cn } from "@/lib/utils";
 import { StatusBadge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Skeleton } from "@/components/ui/Skeleton";
@@ -66,7 +66,7 @@ export default function OrcamentoDetailPage() {
   const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
-    if (!loading && !user) router.replace("/login");
+    if (!loading && !user) router.replace("/dashboard");
   }, [user, loading, router]);
 
   useEffect(() => {
@@ -285,7 +285,6 @@ export default function OrcamentoDetailPage() {
                     <th className="px-6 py-3 text-right text-xs font-semibold text-slate-500 uppercase">Qtd</th>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Un</th>
                     <th className="px-6 py-3 text-right text-xs font-semibold text-slate-500 uppercase">Preço Unit.</th>
-                    <th className="px-6 py-3 text-right text-xs font-semibold text-slate-500 uppercase">Desc.</th>
                     <th className="px-6 py-3 text-right text-xs font-semibold text-slate-500 uppercase">Total</th>
                   </tr>
                 </thead>
@@ -297,9 +296,6 @@ export default function OrcamentoDetailPage() {
                       <td className="px-6 py-3 text-right text-slate-700">{parseFloat(item.quantity).toLocaleString("pt-BR")}</td>
                       <td className="px-6 py-3 text-slate-500">{item.unit}</td>
                       <td className="px-6 py-3 text-right text-slate-700">{formatCurrency(parseFloat(item.unitPrice))}</td>
-                      <td className="px-6 py-3 text-right text-slate-500">
-                        {parseFloat(item.discount) > 0 ? `${parseFloat(item.discount)}%` : "—"}
-                      </td>
                       <td className="px-6 py-3 text-right font-semibold text-slate-900">
                         {formatCurrency(parseFloat(item.total))}
                       </td>

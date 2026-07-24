@@ -7,6 +7,7 @@ interface AuthUser {
   name: string;
   email: string;
   role: string;
+  avatarInitials: string | null;
 }
 
 interface AuthContextType {
@@ -24,7 +25,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
-  const refresh = async () => {
+  const fetchSession = async () => {
     try {
       const res = await fetch("/api/auth/me");
       if (res.ok) {
@@ -33,7 +34,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } else {
         setUser(null);
       }
-    } catch {
+    } catch (err) {
       setUser(null);
     } finally {
       setLoading(false);
@@ -41,25 +42,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
-    refresh();
+    fetchSession();
   }, []);
 
   const login = async (email: string, password: string) => {
-    const res = await fetch("/api/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
-    });
-    const data = await res.json();
-    if (!res.ok) return { error: data.error ?? "Erro ao entrar." };
-    setUser(data.user);
-    return {};
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      
+      const data = await res.json();
+      
+      if (!res.ok) {
+        return { error: data.error || "Erro ao realizar login" };
+      }
+      
+      setUser(data.user);
+      return {};
+    } catch (err) {
+      return { error: "Erro de conexão ao servidor." };
+    }
   };
 
   const logout = async () => {
-    await fetch("/api/auth/logout", { method: "POST" });
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } catch (err) {}
     setUser(null);
     router.push("/login");
+  };
+
+  const refresh = async () => {
+    await fetchSession();
   };
 
   return (

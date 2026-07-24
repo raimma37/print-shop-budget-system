@@ -37,7 +37,7 @@ export default function EditarOrcamentoPage() {
   const [fetching, setFetching] = useState(true);
 
   useEffect(() => {
-    if (!loading && !user) router.replace("/login");
+    if (!loading && !user) router.replace("/dashboard");
   }, [user, loading, router]);
 
   useEffect(() => {

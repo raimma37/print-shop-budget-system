@@ -12,7 +12,7 @@ export default function NovoOrcamentoPage() {
   const router = useRouter();
 
   useEffect(() => {
-    if (!loading && !user) router.replace("/login");
+    if (!loading && !user) router.replace("/dashboard");
   }, [user, loading, router]);
 
   if (loading || !user) return null;

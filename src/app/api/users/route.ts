@@ -2,12 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { users } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
-import { requireAuth, hashPassword } from "@/lib/auth";
+import { hashPassword } from "@/lib/auth";
 import { getInitials } from "@/lib/utils";
 
 export async function GET() {
   try {
-    await requireAuth();
     const rows = await db
       .select({
         id: users.id,
@@ -21,20 +20,13 @@ export async function GET() {
       .from(users)
       .orderBy(desc(users.createdAt));
     return NextResponse.json(rows);
-  } catch (err) {
-    if (err instanceof Error && err.message === "Unauthorized") {
-      return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
-    }
+  } catch {
     return NextResponse.json({ error: "Erro interno." }, { status: 500 });
   }
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const session = await requireAuth();
-    if (session.role !== "admin") {
-      return NextResponse.json({ error: "Apenas admins podem criar usuários." }, { status: 403 });
-    }
     const body = await req.json();
 
     if (!body.name?.trim() || !body.email?.trim() || !body.password?.trim()) {
@@ -61,9 +53,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(user, { status: 201 });
   } catch (err) {
-    if (err instanceof Error && err.message === "Unauthorized") {
-      return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
-    }
     console.error(err);
     return NextResponse.json({ error: "Erro interno." }, { status: 500 });
   }

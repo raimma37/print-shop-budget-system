@@ -2,11 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { orcamentos, orcamentoItems, clients, users } from "@/db/schema";
 import { eq } from "drizzle-orm";
-import { requireAuth } from "@/lib/auth";
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await requireAuth();
     const { id } = await params;
     const numId = parseInt(id);
 
@@ -51,9 +49,6 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
     return NextResponse.json({ ...orc, items });
   } catch (err) {
-    if (err instanceof Error && err.message === "Unauthorized") {
-      return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
-    }
     console.error(err);
     return NextResponse.json({ error: "Erro interno." }, { status: 500 });
   }
@@ -61,7 +56,6 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await requireAuth();
     const { id } = await params;
     const numId = parseInt(id);
     const body = await req.json();
@@ -93,7 +87,11 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       .set({
         clientId: body.clientId,
         status: body.status,
-        validUntil: body.validUntil ? new Date(body.validUntil) : null,
+        validUntil: body.validUntil
+          ? new Date(/^\d{4}-\d{2}-\d{2}$/.test(body.validUntil)
+              ? body.validUntil + "T12:00:00.000Z"
+              : body.validUntil)
+          : null,
         subtotal: String(subtotal.toFixed(2)),
         discount: String(discountAmt.toFixed(2)),
         total: String(total.toFixed(2)),
@@ -133,9 +131,6 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
     return NextResponse.json(updated);
   } catch (err) {
-    if (err instanceof Error && err.message === "Unauthorized") {
-      return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
-    }
     console.error(err);
     return NextResponse.json({ error: "Erro interno." }, { status: 500 });
   }
@@ -143,16 +138,13 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await requireAuth();
     const { id } = await params;
     const numId = parseInt(id);
     await db.delete(orcamentoItems).where(eq(orcamentoItems.orcamentoId, numId));
     await db.delete(orcamentos).where(eq(orcamentos.id, numId));
     return NextResponse.json({ ok: true });
   } catch (err) {
-    if (err instanceof Error && err.message === "Unauthorized") {
-      return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
-    }
+    console.error(err);
     return NextResponse.json({ error: "Erro interno." }, { status: 500 });
   }
 }

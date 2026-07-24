@@ -52,7 +52,7 @@ export default function OrcamentosPage() {
   const [deleting, setDeleting] = useState<number | null>(null);
 
   useEffect(() => {
-    if (!loading && !user) router.replace("/login");
+    if (!loading && !user) router.replace("/dashboard");
   }, [user, loading, router]);
 
   const fetchData = useCallback(async () => {
